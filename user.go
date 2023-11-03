@@ -1,4 +1,4 @@
-package vimeo
+package vimego
 
 type User struct {
 	Uri  string `json:"uri,omitempty"`

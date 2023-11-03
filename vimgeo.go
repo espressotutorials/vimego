@@ -1,4 +1,4 @@
-package vimeo
+package vimego
 
 import (
 	"encoding/json"
