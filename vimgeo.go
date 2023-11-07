@@ -10,16 +10,29 @@ import (
 	"time"
 )
 
-const apiUrl = "https://api.vimeo.com"
-
 type Error struct {
 	StatusCode int
 	URL        string
 	Body       string
+	RateLimit  RateLimit
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("%d %s: %s", e.StatusCode, e.URL, e.Body)
+	return fmt.Sprintf(
+		"%d %s: %s (RateLimit: Remaining: %d | Limit: %d | Reset: %s )",
+		e.StatusCode,
+		e.URL,
+		e.Body,
+		e.RateLimit.Remaining,
+		e.RateLimit.Limit,
+		e.RateLimit.Reset,
+	)
+}
+
+type RateLimit struct {
+	Limit     int
+	Remaining int
+	Reset     time.Time
 }
 
 type VimeoResponse[T any] struct {
@@ -73,27 +86,29 @@ type VimeoPrivacy struct {
 type VimeoOptions []string
 
 type Client struct {
-	accessToken string
-	httpClient  *http.Client
+	AccessToken string
+	BaseURL     string
+	HttpClient  *http.Client
 }
 
 func New(accessToken string) *Client {
 	return &Client{
-		accessToken: accessToken,
-		httpClient:  &http.Client{},
+		AccessToken: accessToken,
+		BaseURL:     "https://api.vimeo.com",
+		HttpClient:  &http.Client{},
 	}
 }
 
 func (c *Client) get(uri string, jsonResponse interface{}, params ...QueryParam) (*http.Response, error) {
-	u, _ := addQueryParam(apiUrl+"/"+strings.TrimLeft(uri, "/"), params...)
+	u, _ := addQueryParam(c.BaseURL+"/"+strings.TrimLeft(uri, "/"), params...)
 
 	req, err := http.NewRequest("GET", u, nil)
-	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := c.httpClient.Do(req)
+	res, err := c.HttpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +130,7 @@ func (c *Client) get(uri string, jsonResponse interface{}, params ...QueryParam)
 		StatusCode: res.StatusCode,
 		URL:        res.Request.URL.String(),
 		Body:       string(bytes),
+		RateLimit:  parseRateLimit(res),
 	}
 }
 
@@ -122,4 +138,25 @@ func getId(uri string) int {
 	s := strings.SplitN(uri, "/", -1)
 	id, _ := strconv.Atoi(s[len(s)-1])
 	return id
+}
+
+func parseRateLimit(r *http.Response) RateLimit {
+	var l RateLimit
+
+	if reset := r.Header.Get("X-RateLimit-Reset"); reset != "" {
+		t, err := time.Parse(time.RFC3339, reset)
+		if err != nil {
+			l.Reset = t
+		}
+	}
+
+	if remaining := r.Header.Get("X-RateLimit-Remaining"); remaining != "" {
+		l.Remaining, _ = strconv.Atoi(remaining)
+	}
+
+	if limit := r.Header.Get("X-RateLimit-Limit"); limit != "" {
+		l.Remaining, _ = strconv.Atoi(limit)
+	}
+
+	return l
 }
