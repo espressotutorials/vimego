@@ -144,10 +144,7 @@ func parseRateLimit(r *http.Response) RateLimit {
 	var l RateLimit
 
 	if reset := r.Header.Get("X-RateLimit-Reset"); reset != "" {
-		t, err := time.Parse(time.RFC3339, reset)
-		if err != nil {
-			l.Reset = t
-		}
+		l.Reset, _ = time.Parse(time.RFC3339, reset)
 	}
 
 	if remaining := r.Header.Get("X-RateLimit-Remaining"); remaining != "" {
@@ -155,7 +152,7 @@ func parseRateLimit(r *http.Response) RateLimit {
 	}
 
 	if limit := r.Header.Get("X-RateLimit-Limit"); limit != "" {
-		l.Remaining, _ = strconv.Atoi(limit)
+		l.Limit, _ = strconv.Atoi(limit)
 	}
 
 	return l
